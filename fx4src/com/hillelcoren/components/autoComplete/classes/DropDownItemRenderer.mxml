@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <mx:Label xmlns:mx="http://www.adobe.com/2006/mxml" 
 	width="100%" toolTip=""
-	creationComplete="init()"
-	htmlText="{ _list.labelFunction( data ) }">
+	creationComplete="init()" fontFamily="Verdana">
 	
 	<mx:Script>
 		<![CDATA[
@@ -17,6 +16,20 @@
 				{
 					_list = listData.owner as List;
 				}
+			}
+			
+			override public function set data(value:Object):void
+			{
+				super.data = value;
+				
+				htmlText = null;
+				
+				//callLater(function():void{
+				if(value && _list)
+					htmlText = value.label;//_list.labelFunction(value);
+				//});
+				
+				invalidateProperties(); 
 			}
 		]]>
 	</mx:Script>
