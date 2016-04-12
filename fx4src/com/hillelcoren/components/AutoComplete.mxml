@@ -39,7 +39,6 @@
 		
 	<mx:Script>
 		<![CDATA[
-			import com.hillelcoren.components.autoComplete.classes.DropDownItemRenderer;
 			import com.hillelcoren.components.autoComplete.classes.EditableItem;
 			import com.hillelcoren.components.autoComplete.classes.IconButton;
 			import com.hillelcoren.components.autoComplete.classes.SelectedItem;
@@ -47,22 +46,26 @@
 			import com.hillelcoren.utils.StringUtils;
 			
 			import mx.collections.ArrayCollection;
-            import mx.collections.IList;
-            import mx.collections.ListCollectionView;
+			import mx.collections.IList;
+			import mx.collections.ListCollectionView;
 			import mx.controls.Button;
-			import mx.controls.List;
 			import mx.controls.dataGridClasses.DataGridListData;
 			import mx.controls.listClasses.BaseListData;
-			import mx.core.Application;
+			import mx.core.ClassFactory;
+			import mx.core.IFactory;
 			import mx.core.UIComponent;
 			import mx.events.CollectionEvent;
 			import mx.events.CollectionEventKind;
 			import mx.events.FlexEvent;
-			import mx.events.ListEvent;
 			import mx.events.MoveEvent;
 			import mx.managers.PopUpManager;
+			import mx.utils.StringUtil;
 			
-			protected var _dropDown:List;
+			import spark.components.List;
+			import spark.events.IndexChangeEvent;
+			
+			//protected var _dropDown:List;
+			protected var _dropDown:List
 			protected var _matchType:String = MATCH_WORD;
 
             // The dataProvider supplied by the user is stored in
@@ -476,17 +479,52 @@
 					return false;
 				}
 				
+				if(!searchFor)
+					return true;
+					
 				var count:int;
+				
+				if(searchFor is String)
+				{
+					searchFor = StringUtil.trim(searchFor as String);
+				}
+				else if(_keyField in searchFor)
+					searchFor[_keyField] = StringUtil.trim(searchFor[_keyField] as String);
 				
 				for each (var item:Object in _selectedItems.source)
 				{
-					if (item == searchFor || 
-						(item.hasOwnProperty( _keyField )
-							&& searchFor.hasOwnProperty( _keyField )
-							&& item[_keyField] == searchFor[_keyField]))
+					var addedItem:String = "";
+					var itemToCompare:String = "";
+					
+					//Lower case check to fix issue #28535
+					if(item is String)
+						addedItem = item.toLowerCase();
+					else if(item.hasOwnProperty(_keyField))
+						addedItem = item[_keyField].toLowerCase();
+					
+					if(!addedItem)
+						continue;
+					
+					if(searchFor is String)
+						itemToCompare = searchFor.toLowerCase();
+					else if(searchFor.hasOwnProperty(_keyField))
+						itemToCompare = searchFor[_keyField].toLowerCase();
+					
+					addedItem = addedItem.replace(/ /g,"");//replace all the spaces
+					itemToCompare = itemToCompare.replace(/ /g,"");//replace all the spaces
+					
+					if(addedItem == itemToCompare)
 					{
 						count++;
 					}
+					
+					/* if (item == searchFor || 
+						(item.hasOwnProperty( _keyField )
+							&& searchFor.hasOwnProperty( _keyField )
+							&& item[_keyField].toLowerCase() == searchFor[_keyField].toLowerCase()))
+					{
+						count++;
+					} */
 				} 
 								
 				if (count > 1)
@@ -496,6 +534,11 @@
 				}
 				
 				return false;
+			}
+			
+			private function stringToObject(value:String):Object
+			{
+				return {label:value};
 			}
 			
 			protected function checkIfUnavailable( item:Object ):Boolean
@@ -656,10 +699,12 @@
 				_dropDown = new List();
 				_dropDown.focusEnabled 	= false;
 				_dropDown.dataProvider 	= _filteredDataProvider;
+				_dropDown.labelField = "label";
 				_dropDown.labelFunction = _dropDownLabelFunction;
-				_dropDown.rowCount		= _dropDownRowCount;
-				_dropDown.itemRenderer  = _dropDownItemRenderer ? _dropDownItemRenderer : new ClassFactory( DropDownItemRenderer );
-				_dropDown.addEventListener( ListEvent.ITEM_CLICK, handleDropDownItemClick );				
+				_dropDown.maxHeight = 125;
+				//_dropDown.rowCount		= _dropDownRowCount;
+				_dropDown.itemRenderer  = _dropDownItemRenderer ? _dropDownItemRenderer : new ClassFactory( TagRenderer );
+				_dropDown.addEventListener( IndexChangeEvent.CHANGE, handleDropDownItemClick );				
 				
 				systemManager.addEventListener( MouseEvent.MOUSE_DOWN, handleMouseDown );				
 			}
@@ -698,7 +743,7 @@
 							_dropDown.selectedIndex++;
 						}
 						
-						_dropDown.scrollToIndex( _dropDown.selectedIndex );
+						_dropDown.ensureIndexIsVisible( _dropDown.selectedIndex );
 						textInput.setCursorPosition( textInput.selectionBeginIndex );						
 					}
 					else if (event.keyCode == Keyboard.UP)
@@ -712,7 +757,7 @@
 							_dropDown.selectedIndex--;						
 						}
 						
-						_dropDown.scrollToIndex( _dropDown.selectedIndex );
+						_dropDown.ensureIndexIsVisible( _dropDown.selectedIndex );
 						textInput.setCursorPosition( textInput.selectionBeginIndex );							
 					}
 					else if (event.keyCode == Keyboard.ESCAPE)
@@ -722,8 +767,27 @@
 					else if (event.keyCode == Keyboard.ENTER || event.keyCode == Keyboard.TAB 
 						|| (String.fromCharCode(event.charCode) == _delimiter && _allowMultipleSelection))
 					{
-						_selectedItems.addItem( _dropDown.selectedItem );
-						dispatchEvent( new Event( Event.CHANGE ) );
+						if(_dropDown.selectedItem)
+						{
+							_selectedItems.addItem( _dropDown.selectedItem );
+							dispatchEvent( new Event( Event.CHANGE ) );
+						}
+						else
+						{
+							var ci:iComboItem = determineFocus();
+							
+							if(ci)
+							{
+								var r:Object = containsText(ci.text);
+								
+								if(r)
+									_selectedItems.addItem(r);
+								else
+									_selectedItems.addItem( ci.text );
+								
+								dispatchEvent( new Event( Event.CHANGE ) );
+							}
+						}
 					}
 				}
 				else
@@ -912,7 +976,13 @@
 						}
 						else if (target.text && _allowNewValues && target.isEditable())
 						{
-							_selectedItems.addItem( target.text );
+							var result:Object = containsText(target.text);
+							
+							if(result)
+								_selectedItems.addItem( result );
+							else
+								_selectedItems.addItem( target.text );
+							
 							dispatchEvent( new Event( Event.CHANGE ) );																														
 							return;
 						}
@@ -922,6 +992,22 @@
 						}
 					}
 				}
+			}
+			
+			private function containsText(value:String):Object
+			{
+				var result:Object = null;
+				
+				for each(var i:Object in _filteredDataProvider.list)
+				{
+					if(value.toLowerCase() == i[_labelField].toLowerCase())
+					{
+						result = i;
+						break;
+					}
+				}
+				
+				return result;
 			}
 			
 			protected function determineFocus():iComboItem
@@ -1080,7 +1166,7 @@
 				}
 			}
 			
-			protected function handleDropDownItemClick( event:ListEvent ):void
+			protected function handleDropDownItemClick( event:IndexChangeEvent ):void
 			{
 				_selectedItems.addItem( _dropDown.selectedItem );
 				dispatchEvent( new Event( Event.CHANGE ) );
@@ -1167,7 +1253,7 @@
 				
 				if (isDropDownVisible())
 				{
-					_dropDown.rowCount = (_filteredDataProvider.length < _dropDownRowCount ? _filteredDataProvider.length : _dropDownRowCount);
+					//_dropDown.rowCount = (_filteredDataProvider.length < _dropDownRowCount ? _filteredDataProvider.length : _dropDownRowCount);
 					callLater( highlightFirstItem );
 					callLater( positionDropDown );									
 				}	
@@ -1175,7 +1261,7 @@
 			
 			protected function highlightFirstItem():void
 			{
-				_dropDown.selectedIndex = 0;
+				_dropDown.selectedIndex = -1;
 			}
 			
 			protected function isPerfectMatch():Boolean
@@ -1240,6 +1326,9 @@
 			{
 				_filteredDataProvider.filterFunction = filterFunctionWrapper;
                 _filteredDataProvider.refresh();
+				
+				if(_dropDown)
+					_dropDown.validateProperties();
 			}
 			
 			public function showDropDown():void
@@ -1261,18 +1350,19 @@
 				
 				_dropDown.width = _dropDownWidth ? _dropDownWidth : flowBox.width;
 				_dropDown.owner = this;
-				_dropDown.scrollToIndex(0);
 				
 				PopUpManager.addPopUp( _dropDown, this );
 
 				callLater( initDropDown );
 				callLater( callLater, [positionDropDown] );
+				//_dropDown.scrollToIndex(0);
 			}
 			
 			protected function initDropDown():void
 			{
-				_dropDown.selectedIndex = 0;
-				_dropDown.rowCount = (_filteredDataProvider.length < _dropDownRowCount ? _filteredDataProvider.length : _dropDownRowCount);							
+				_dropDown.selectedIndex = -1;
+				//_dropDown.rowCount = (_filteredDataProvider.length < _dropDownRowCount ? _filteredDataProvider.length : _dropDownRowCount);	
+				_dropDown.ensureIndexIsVisible(0);
 			}
 			
 			public function positionDropDown():void
@@ -1287,7 +1377,7 @@
 								
 				_dropDown.x = globalPoint.x;
 				
-				var fitsBelow:Boolean = Application.application.height - globalPoint.y - mainGridRow.height > dropDown.height;
+				var fitsBelow:Boolean = root.height - globalPoint.y - mainGridRow.height > dropDown.height;
 				var fitsAbove:Boolean = globalPoint.y > dropDown.height;
 				
 				// check if it will fit below the textInput 
@@ -1304,6 +1394,12 @@
 			public function hideDropDown():void
 			{
 				PopUpManager.removePopUp( _dropDown );
+				
+				if(_filteredDataProvider)
+				{
+					_filteredDataProvider.filterFunction = null;
+					_filteredDataProvider.refresh();
+				}
 				
 				callLater( enableDefaultButton );
 			}
