@@ -14,11 +14,12 @@
 	
 	<mx:Script>
 		<![CDATA[
-			import mx.core.Application;
-			import mx.core.UIComponent;
 			import mx.containers.Box;
 			import mx.controls.Image;
+			import mx.core.Application;
+			import mx.core.UIComponent;
 			import mx.states.SetStyle;
+			import mx.utils.StringUtil;
 			
 			protected var _prompt:String;
 			protected var _promptChanged:Boolean;
@@ -205,11 +206,11 @@
 					
 					if (_textChanged)
 					{
-						return _text;
+						return StringUtil.trim(_text);
 					}
 					else
 					{
-						return textInput.text;
+						return StringUtil.trim(textInput.text);
 					}
 				}
 			}
